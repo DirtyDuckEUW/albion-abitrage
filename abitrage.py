@@ -2,7 +2,6 @@ import json
 import requests
 import time
 from AlbionItem import AlbionItem
-from operator import attrgetter
 
 BESTITEMS = []
 DEBUG = False
@@ -11,6 +10,8 @@ def AddItem(new_item: AlbionItem):
     new_item_added = False
     if len(BESTITEMS) >= 10:
         SortProfit()
+        print("Least profit: " + str(BESTITEMS[-1].GetProfit()))
+        print("New profit:   " + str(new_item.GetProfit()))
         if new_item.GetProfit() > BESTITEMS[-1].GetProfit():
             BESTITEMS.pop()
             BESTITEMS.append(new_item)
@@ -19,31 +20,50 @@ def AddItem(new_item: AlbionItem):
         BESTITEMS.append(new_item)
         new_item_added = True
 
+    if new_item_added:
+        SortProfit()
         print("----------------------------")
         print("New item added!")
         print(new_item)
         print("----------------------------")
-    if DEBUG and new_item_added:
-        SortProfit()
-        print("Items: " + str(len(BESTITEMS)))
-        for item in BESTITEMS:
-            print(item)
-
 
 def SortProfit():
-    print("---------SORTING---------")
     BESTITEMS.sort(key=lambda x: x.profit, reverse=True)
     
 # get item data
-f = open('items.json', "r+", encoding='utf-8')
-data = json.load(f)
-f.close()
+items = open('items.json', "r+", encoding='utf-8')
+data = json.load(items)
+items.close()
+
+# get item data
+items = open('itemsweigth.json', "r+", encoding='utf-8')
+weightData = json.load(items)
+items.close()
 
 # every item
 for item in data:
+    weightFound = False
     current_item = AlbionItem(item["UniqueName"])
+    shortname = current_item.GetName()
+    if "@" in shortname:
+        shortname = shortname[:len(shortname) -2]
 
-    if not current_item.GetName().startswith("T4"):
+    for category in weightData:
+        if weightFound:
+            break
+        for weightitem in weightData[category]:
+            if weightFound:
+                break
+            if shortname == weightitem["@uniquename"]:
+                try:
+                    current_item.SetWeight(float(weightitem["@weight"]))
+                    weightFound = True
+                except:
+                    current_item.SetWeight(float(1))
+                    weightFound = True
+
+
+    if current_item.GetName().startswith(("T1", "T2", "T3")):
         continue
 
     # create request
@@ -52,8 +72,12 @@ for item in data:
     req = requests.get(url)
 
     while(req.status_code == 429):
+        print("------------------------------------")
         print("Waiting for api to recharge...")
-        time.sleep(10)
+        print("---------Current best items---------")
+        for item in BESTITEMS:
+            print(item)
+        time.sleep(30)
         req = requests.get(url)
 
     if req.status_code == 200:
@@ -71,14 +95,15 @@ for item in data:
             # car sell
             if lymhurstItem["buy_price_max"] > 0 and caerleaonItem["sell_price_min"] > 0:
                 # calculate profit
-                current_item.SetProfit(lymhurstItem["buy_price_max"] - caerleaonItem["sell_price_min"])
+                profit =  lymhurstItem["buy_price_max"] - caerleaonItem["sell_price_min"]
+                weightProfit = round(profit / current_item.GetWeight(), 2)
+                current_item.SetProfit(weightProfit)
 
                 if current_item.GetProfit() < best_profit_peer_quality:
                     continue
 
                 best_profit_peer_quality = current_item.GetProfit()
                 current_item.SetQuality(quality + 1)
-                print(current_item)
                 #add new best item
                 AddItem(current_item)
                 

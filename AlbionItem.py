@@ -4,9 +4,10 @@ class AlbionItem:
         self.name = name
         self.quality = -1
         self.profit = -1
+        self.weight = 9999
 
     def __repr__(self):
-        return "Name: " + self.name + " Quality: " + str(self.quality) + " Profit: " + str(self.profit)
+        return "Name: " + self.name + " Quality: " + str(self.quality) + " Profit: " + str(self.profit) + " Weight: " + str(self.weight)
         
     def SetName(self, name):
         self.name = name
@@ -25,3 +26,9 @@ class AlbionItem:
 
     def GetProfit(self) -> int:
         return self.profit
+
+    def SetWeight(self, weight):
+        self.weight = weight
+
+    def GetWeight(self) -> float:
+        return self.weight
