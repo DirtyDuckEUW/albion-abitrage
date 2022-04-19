@@ -5,6 +5,7 @@ from AlbionItem import AlbionItem
 
 BESTITEMS = []
 DEBUG = False
+COUNTER = 0
 
 def AddItem(new_item: AlbionItem):
     new_item_added = False
@@ -42,8 +43,14 @@ items.close()
 
 # every item
 for item in data:
+    COUNTER += 1
     weightFound = False
     current_item = AlbionItem(item["UniqueName"])
+
+    # filter for itemgroups
+    if current_item.GetName().startswith(("T1", "T2", "T3")):
+        continue
+
     shortname = current_item.GetName()
     if "@" in shortname:
         shortname = shortname[:len(shortname) -2]
@@ -63,8 +70,7 @@ for item in data:
                     weightFound = True
 
 
-    if current_item.GetName().startswith(("T1", "T2", "T3")):
-        continue
+
 
     # create request
     url = "https://www.albion-online-data.com/api/v2/stats/prices/{0}?locations=Caerleon,Lymhurst".format(
@@ -74,6 +80,7 @@ for item in data:
     while(req.status_code == 429):
         print("------------------------------------")
         print("Waiting for api to recharge...")
+        print("Checked items: " + str(COUNTER))
         print("---------Current best items---------")
         for item in BESTITEMS:
             print(item)
