@@ -1,119 +1,112 @@
+from asyncore import write
 import json
 import requests
-import time
 from AlbionItem import AlbionItem
 
-BESTITEMS = []
-DEBUG = False
-COUNTER = 0
+class AbitrageBot():
+    URL = "https://www.albion-online-data.com/api/v2/stats/prices/{0}?locations=Caerleon,Lymhurst,Bridgewatch,Fort%20Sterling"
+    ITEMDATA = "ItemData.json"
+    ITEMNAMES = "ItemNames.json"
+    ITEMSTORAGE = "ItemStorage.json"
 
-def AddItem(new_item: AlbionItem):
-    new_item_added = False
-    if len(BESTITEMS) >= 10:
-        SortProfit()
-        print("Least profit: " + str(BESTITEMS[-1].GetProfit()))
-        print("New profit:   " + str(new_item.GetProfit()))
-        if new_item.GetProfit() > BESTITEMS[-1].GetProfit():
-            BESTITEMS.pop()
-            BESTITEMS.append(new_item)
-            new_item_added = True
-    else:
-        BESTITEMS.append(new_item)
-        new_item_added = True
+    def __init__(self) -> None:
+        self.bestitems = []
+        self.running = False
+        self.filter = ("UNIQUE")
+        # get item data
+        with open(self.ITEMNAMES, "r+", encoding='utf-8') as file:
+            self.item_names = json.load(file)
 
-    if new_item_added:
-        SortProfit()
-        print("----------------------------")
-        print("New item added!")
-        print(new_item)
-        print("----------------------------")
+        # get weight data
+        with open(self.ITEMDATA, "r+", encoding='utf-8') as file:
+            self.item_data = json.load(file)
 
-def SortProfit():
-    BESTITEMS.sort(key=lambda x: x.profit, reverse=True)
-    
-# get item data
-items = open('items.json', "r+", encoding='utf-8')
-data = json.load(items)
-items.close()
+    def main_loop(self):
+        self.running = True
+        self.fetch_data()
 
-# get item data
-items = open('itemsweigth.json', "r+", encoding='utf-8')
-weightData = json.load(items)
-items.close()
+    def create_request(self, url):
+        req = requests.get(url)
+        # validate request
+        while(req.status_code == 429):
+            req = requests.get(url)
 
-# every item
-for item in data:
-    COUNTER += 1
-    weightFound = False
-    current_item = AlbionItem(item["UniqueName"])
+        if req.status_code == 200:
+            # return request data
+            return req.json()
 
-    # filter for itemgroups
-    if current_item.GetName().startswith(("T1", "T2", "T3")):
-        continue
+    def get_item_data(self, current_item : AlbionItem):
+        weightFound = False
+        shortname = current_item.GetName()
+        if "@" in shortname:
+            shortname = shortname[:len(shortname) -2]
 
-    shortname = current_item.GetName()
-    if "@" in shortname:
-        shortname = shortname[:len(shortname) -2]
-
-    for category in weightData:
-        if weightFound:
-            break
-        for weightitem in weightData[category]:
+        for category in self.item_data:
             if weightFound:
                 break
-            if shortname == weightitem["@uniquename"]:
-                try:
-                    current_item.SetWeight(float(weightitem["@weight"]))
-                    weightFound = True
-                except:
-                    current_item.SetWeight(float(1))
-                    weightFound = True
+            for itemdata in self.item_data[category]:
+                if weightFound:
+                    break
+                if shortname == itemdata["@uniquename"]:
+                    # item found
+                    current_item.SetCategory(itemdata["@shopcategory"])
+                    try:
+                        current_item.SetWeight(float(itemdata["@weight"]))
+                        weightFound = True
+                    except:
+                        current_item.SetWeight(float(0.001))
+                        weightFound = True
+        return current_item
+
+    def fetch_data(self):
+        items = []
+        # every item
+        for item in self.item_names:
+
+            if not self.running:
+                break
+
+            current_item = AlbionItem(item["UniqueName"])
+
+            # filter for itemgroups
+            if current_item.GetName().startswith(self.filter):
+                continue
+
+            current_item = self.get_item_data(current_item)
+
+            # create request 
+            jsonData = self.create_request(self.URL.format(current_item.GetName()))
+            #jsonData = self.create_request(self.URL.format("T5_ARMOR_CLOTH_SET1@1"))
 
 
+            current_city = "Bridgewatch"
+            city = {}
+            item_citys = []
+            item_qualitys = []
+            # every quality peer item
+            for item in jsonData:
+                if item["city"] != current_city:
+                    if len(item_qualitys) > 0:
+                        # only add city to item if it has a quality
+                        city = {item["city"]: item_qualitys}
+                        item_citys.append(city)
+                    #cleanup for 
+                    current_city = item["city"]
+                    item_qualitys = []
+                if item["sell_price_min"] > 0 and item["buy_price_max"] > 0:
+                    # only add quality to item if it has prices
+                    quality = { "quality": item["quality"], "sell": item["sell_price_min"], "buy": item["buy_price_max"]}
+                    item_qualitys.append(quality)
+                    
+            if len(item_citys) > 1:
+                # only add item to item if it has citys
+                raw_item = {"name": current_item.GetName(), "category:": current_item.GetCategory(), "weight": current_item.GetWeight(), "citys": item_citys}
+                items.append(raw_item)
+
+        with open(self.ITEMSTORAGE, "w", encoding='utf-8') as file:
+            json.dump(items, file)
 
 
-    # create request
-    url = "https://www.albion-online-data.com/api/v2/stats/prices/{0}?locations=Caerleon,Lymhurst".format(
-        current_item.GetName())
-    req = requests.get(url)
+obj = AbitrageBot()
 
-    while(req.status_code == 429):
-        print("------------------------------------")
-        print("Waiting for api to recharge...")
-        print("Checked items: " + str(COUNTER))
-        print("---------Current best items---------")
-        for item in BESTITEMS:
-            print(item)
-        time.sleep(30)
-        req = requests.get(url)
-
-    if req.status_code == 200:
-        # get request data
-        jsonData = req.json()
-
-        best_profit_peer_quality = 0
-
-        # every quality peer item
-        for quality in range(0, int(len(jsonData) / 2)):
-            caerleaonItem = jsonData[quality]
-            lymhurstItem = jsonData[quality + int(len(jsonData) / 2)]
-
-            # lym buy
-            # car sell
-            if lymhurstItem["buy_price_max"] > 0 and caerleaonItem["sell_price_min"] > 0:
-                # calculate profit
-                profit =  lymhurstItem["buy_price_max"] - caerleaonItem["sell_price_min"]
-                weightProfit = round(profit / current_item.GetWeight(), 2)
-                current_item.SetProfit(weightProfit)
-
-                if current_item.GetProfit() < best_profit_peer_quality:
-                    continue
-
-                best_profit_peer_quality = current_item.GetProfit()
-                current_item.SetQuality(quality + 1)
-                #add new best item
-                AddItem(current_item)
-                
-print("-----FINISHED-----")
-SortProfit()
-print(BESTITEMS)
+obj.main_loop()
