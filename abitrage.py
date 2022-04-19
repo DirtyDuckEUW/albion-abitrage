@@ -66,11 +66,8 @@ for item in data:
                     current_item.SetWeight(float(weightitem["@weight"]))
                     weightFound = True
                 except:
-                    current_item.SetWeight(float(1))
+                    current_item.SetWeight(float(0.001))
                     weightFound = True
-
-
-
 
     # create request
     url = "https://www.albion-online-data.com/api/v2/stats/prices/{0}?locations=Caerleon,Lymhurst".format(
